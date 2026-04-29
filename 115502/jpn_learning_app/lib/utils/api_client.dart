@@ -7,16 +7,16 @@ class ApiClient {
   // 動態判斷平台，自動切換對應的本地端 IP
   static String get baseUrl {
     if (kIsWeb) {
-      return 'http://127.0.0.1:5000/api';
+      return 'http://127.0.0.1:5050/api';
     } else if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:5000/api';
+      return 'http://10.0.2.2:5050/api';
     } else {
-      return 'http://127.0.0.1:5000/api';
+      return 'http://127.0.0.1:5050/api';
     }
   }
 
   // ==========================================
-  // 🔐 登入與註冊相關
+  // 🔐 登入與註冊
   // ==========================================
 
   // 註冊 API
@@ -410,6 +410,47 @@ class ApiClient {
     }
   }
 
+  // 修改好友暱稱 API
+  static Future<Map<String, dynamic>> updateFriendNickname(
+    int userId,
+    String friendId,
+    String newNickname,
+  ) async {
+    final url = Uri.parse('$baseUrl/user/friend/update_nickname');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'friend_id': friendId,
+          'nickname': newNickname,
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'error': '網路連線失敗'};
+    }
+  }
+
+  // 刪除好友 API
+  static Future<Map<String, dynamic>> deleteFriend(
+    int userId,
+    String friendId,
+  ) async {
+    final url = Uri.parse('$baseUrl/user/friend/delete');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'user_id': userId, 'friend_id': friendId}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'error': '網路連線失敗'};
+    }
+  }
+
   // ==========================================
   // 🛡️ 學習小組 (公會) 系統相關
   // ==========================================
@@ -546,6 +587,23 @@ class ApiClient {
     }
   }
 
+  // 撤銷小組邀請
+  static Future<Map<String, dynamic>> cancelGroupInvite(int groupId, String receiverId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/group/cancel_invite'), 
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'group_id': groupId,
+          'receiver_id': receiverId, 
+        }),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {'error': '網路連線失敗，請稍後再試'};
+    }
+  }
+
   // 退出/解散小組 API
   static Future<Map<String, dynamic>> leaveGroup(
     int groupId,
@@ -562,6 +620,23 @@ class ApiClient {
     } catch (e) {
       print('退出小組失敗: $e');
       return {'error': '網路連線失敗'};
+    }
+  }
+
+  // 偷偷檢查這週是否還有免費小組額度
+  static Future<bool> checkFreeQuota(int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/group/check_quota/$userId'),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['is_free'] ?? false;
+      }
+      return false; // 如果有問題，預設當作要扣錢 (比較安全)
+    } catch (e) {
+      print('檢查額度發生錯誤: $e');
+      return false;
     }
   }
 
@@ -749,15 +824,20 @@ class ApiClient {
   }
 
   // 取得「特定照片」解鎖的單字清單
-  static Future<List<dynamic>> getVocabsByPhoto(String imagePath, int userId) async {
+  static Future<List<dynamic>> getVocabsByPhoto(
+    String imagePath,
+    int userId,
+  ) async {
     // 記得將字串 encode，避免檔名有特殊字元
     final encodedPath = Uri.encodeComponent(imagePath);
-    final url = Uri.parse('$baseUrl/scenario/photo_vocabs?user_id=$userId&image_path=$encodedPath');
+    final url = Uri.parse(
+      '$baseUrl/scenario/photo_vocabs?user_id=$userId&image_path=$encodedPath',
+    );
     final response = await http.get(url);
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
-      return data['vocabs']; 
+      return data['vocabs'];
     } else {
       throw Exception('無法載入此照片的單字清單');
     }
@@ -904,6 +984,25 @@ class ApiClient {
     } catch (e) {
       print('上傳圖片連線失敗: $e');
       return {'error': '網路連線失敗: $e'};
+    }
+  }
+
+  // 重新命名照片標題 API
+  static Future<Map<String, dynamic>> renamePhoto(
+    int photoId,
+    String customTitle,
+  ) async {
+    final url = Uri.parse('$baseUrl/scenario/rename_photo');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'photo_id': photoId, 'custom_title': customTitle}),
+      );
+      return jsonDecode(response.body);
+    } catch (e) {
+      print('修改照片名稱連線失敗: $e');
+      return {'error': '網路連線失敗'};
     }
   }
 

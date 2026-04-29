@@ -42,6 +42,7 @@ class SystemSettingsScreen extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildMenuCard(
                     context: context,
@@ -53,21 +54,6 @@ class SystemSettingsScreen extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (_) => const NotificationSettingsScreen(),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  _buildMenuCard(
-                    context: context,
-                    icon: Icons.verified_user_outlined,
-                    iconColor: const Color(0xFF8DBA83),
-                    title: '帳號與安全',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const AccountSecurityScreen(),
                         ),
                       );
                     },
@@ -102,11 +88,159 @@ class SystemSettingsScreen extends StatelessWidget {
                       );
                     },
                   ),
+                  const SizedBox(height: 32),
+                  const Padding(
+                    padding: EdgeInsets.only(left: 4, bottom: 10),
+                    child: Text(
+                      '危險操作',
+                      style: TextStyle(
+                        color: Color(0xFFCC4444),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      onTap: () => _showDeleteDialog(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFFFCDD2)),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x08000000),
+                              blurRadius: 6,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.delete_outline_rounded,
+                                color: Colors.redAccent, size: 28),
+                            const SizedBox(width: 14),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('刪除帳號',
+                                      style: TextStyle(
+                                          color: Colors.redAccent,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600)),
+                                  SizedBox(height: 3),
+                                  Text('永久刪除帳號與所有學習資料',
+                                      style: TextStyle(
+                                          color: Color(0xFFE57373), fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right_rounded,
+                                color: Color(0xFFEF9A9A), size: 26),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  static void _showDeleteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('刪除帳號'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('確定要刪除帳號嗎？',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            SizedBox(height: 12),
+            Text('刪除後以下資料將永久消失，無法復原：'),
+            SizedBox(height: 8),
+            Text('• 所有學習紀錄與能力值'),
+            Text('• 收藏的單字與資料夾'),
+            Text('• 成就徽章'),
+            Text('• 好友關係與學習小組'),
+            Text('• 個人資料與大頭貼'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _showFinalConfirmDialog(context);
+            },
+            child: const Text('我要刪除',
+                style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static void _showFinalConfirmDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('最後確認'),
+        content: const Text('此操作無法復原，確定要永久刪除帳號嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              final userId = context.read<UserProvider>().userId;
+              if (userId == null) return;
+
+              final res = await ApiClient.deleteAccount(userId);
+
+              try {
+                await FirebaseAuth.instance.currentUser?.delete();
+              } catch (_) {}
+
+              if (!context.mounted) return;
+
+              if (res['error'] != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(res['error'])),
+                );
+                return;
+              }
+
+              context.read<UserProvider>().logout();
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+              );
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('帳號已刪除，所有資料已清除')),
+              );
+            },
+            child: const Text('確認刪除',
+                style: TextStyle(
+                    color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }
@@ -184,6 +318,9 @@ class _NotificationSettingsScreenState
   bool streakReminder = true;
   bool friendNotification = false;
 
+  TimeOfDay _dailyTime = const TimeOfDay(hour: 8, minute: 0);
+  TimeOfDay _reviewTime = const TimeOfDay(hour: 19, minute: 0);
+
   static const Color bgColor = Color(0xFFF3F4EF);
   static const Color primaryGreen = Color(0xFF5C8663);
   static const Color textColor = Color(0xFF3E3E3E);
@@ -196,12 +333,15 @@ class _NotificationSettingsScreenState
 
   Future<void> _loadSettings() async {
     final s = await NotificationService.loadSettings();
+    final t = await NotificationService.loadTimes();
     if (!mounted) return;
     setState(() {
       dailyReminder = s['daily']!;
       reviewReminder = s['review']!;
       streakReminder = s['streak']!;
       friendNotification = s['friend']!;
+      _dailyTime = TimeOfDay(hour: t['daily_hour']!, minute: t['daily_minute']!);
+      _reviewTime = TimeOfDay(hour: t['review_hour']!, minute: t['review_minute']!);
     });
   }
 
@@ -213,6 +353,42 @@ class _NotificationSettingsScreenState
       friend: friendNotification,
     );
   }
+
+  Future<void> _saveTimes() async {
+    await NotificationService.saveTimes(
+      dailyHour: _dailyTime.hour,
+      dailyMinute: _dailyTime.minute,
+      reviewHour: _reviewTime.hour,
+      reviewMinute: _reviewTime.minute,
+    );
+  }
+
+  Future<void> _pickTime({
+    required TimeOfDay current,
+    required ValueChanged<TimeOfDay> onPicked,
+  }) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: current,
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: primaryGreen,
+            onSurface: textColor,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() => onPicked(picked));
+      await _saveTimes();
+    }
+  }
+
+  String _fmtTime(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
 
   @override
   Widget build(BuildContext context) {
@@ -240,23 +416,33 @@ class _NotificationSettingsScreenState
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               children: [
-                _buildSwitchTile(
+                _buildTimedNotifTile(
                   title: '每日學習提醒',
-                  subtitle: '每天早上 8:00 提醒你開始學習',
+                  subtitle: '每天早上提醒你開始學習',
                   value: dailyReminder,
+                  time: _dailyTime,
                   onChanged: (value) {
                     setState(() => dailyReminder = value);
                     _save();
                   },
+                  onTimeTap: () => _pickTime(
+                    current: _dailyTime,
+                    onPicked: (t) => _dailyTime = t,
+                  ),
                 ),
-                _buildSwitchTile(
+                _buildTimedNotifTile(
                   title: '單字複習提醒',
-                  subtitle: '每天晚上 7:00 提醒你複習單字',
+                  subtitle: '每天提醒你複習單字',
                   value: reviewReminder,
+                  time: _reviewTime,
                   onChanged: (value) {
                     setState(() => reviewReminder = value);
                     _save();
                   },
+                  onTimeTap: () => _pickTime(
+                    current: _reviewTime,
+                    onPicked: (t) => _reviewTime = t,
+                  ),
                 ),
                 _buildSwitchTile(
                   title: '連續登入提醒',
@@ -280,6 +466,78 @@ class _NotificationSettingsScreenState
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTimedNotifTile({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required TimeOfDay time,
+    required ValueChanged<bool> onChanged,
+    required VoidCallback onTimeTap,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE7E7E7)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x07000000), blurRadius: 5, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        children: [
+          SwitchListTile(
+            contentPadding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+            title: Text(title,
+                style: const TextStyle(
+                    color: textColor, fontSize: 16, fontWeight: FontWeight.w600)),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: Text(subtitle,
+                  style: const TextStyle(color: Color(0xFF8A8A8A), fontSize: 12)),
+            ),
+            value: value,
+            activeColor: Colors.white,
+            activeTrackColor: primaryGreen,
+            inactiveThumbColor: Colors.white,
+            inactiveTrackColor: const Color(0xFFBDBDBD),
+            trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+            onChanged: onChanged,
+          ),
+          // 時間選擇列
+          InkWell(
+            onTap: value ? onTimeTap : null,
+            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Row(
+                children: [
+                  Icon(Icons.access_time_rounded,
+                      size: 15,
+                      color: value ? primaryGreen : const Color(0xFFBDBDBD)),
+                  const SizedBox(width: 6),
+                  Text(
+                    _fmtTime(time),
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: value ? primaryGreen : const Color(0xFFBDBDBD),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    value ? '點擊修改時間' : '請先開啟通知',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFFAAAAAA)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -326,212 +584,13 @@ class _NotificationSettingsScreenState
           ),
         ),
         value: value,
-        activeColor: primaryGreen,
+        activeColor: Colors.white,
+        activeTrackColor: primaryGreen,
+        inactiveThumbColor: Colors.white,
+        inactiveTrackColor: const Color(0xFFBDBDBD),
+        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
         onChanged: onChanged,
       ),
-    );
-  }
-}
-
-class AccountSecurityScreen extends StatelessWidget {
-  const AccountSecurityScreen({super.key});
-
-  static const Color bgColor = Color(0xFFF3F4EF);
-  static const Color primaryGreen = Color(0xFF5C8663);
-  static const Color textColor = Color(0xFF3E3E3E);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: bgColor,
-      appBar: AppBar(
-        backgroundColor: primaryGreen,
-        elevation: 0,
-        centerTitle: true,
-        toolbarHeight: 64,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text(
-          '帳號與安全',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              children: [
-                _buildActionTile(
-                  icon: Icons.delete_outline_rounded,
-                  title: '刪除帳號',
-                  subtitle: '永久刪除帳號與學習資料',
-                  titleColor: Colors.redAccent,
-                  onTap: () {
-                    _showDeleteDialog(context);
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-    Color titleColor = textColor,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE7E7E7)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x07000000),
-            blurRadius: 5,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ListTile(
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        leading: Icon(icon, color: primaryGreen, size: 24),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: titleColor,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 3),
-          child: Text(
-            subtitle,
-            style: const TextStyle(
-              color: Color(0xFF8A8A8A),
-              fontSize: 12,
-            ),
-          ),
-        ),
-        trailing: const Icon(
-          Icons.chevron_right_rounded,
-          color: Color(0xFFB0B0B0),
-          size: 26,
-        ),
-        onTap: onTap,
-      ),
-    );
-  }
-
-  void _showDeleteDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('刪除帳號'),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '確定要刪除帳號嗎？',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              SizedBox(height: 12),
-              Text('刪除後以下資料將永久消失，無法復原：'),
-              SizedBox(height: 8),
-              Text('• 所有學習紀錄與能力值'),
-              Text('• 收藏的單字與資料夾'),
-              Text('• 成就徽章'),
-              Text('• 好友關係與學習小組'),
-              Text('• 個人資料與大頭貼'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                // 二次確認
-                _showFinalConfirmDialog(context);
-              },
-              child: const Text(
-                '我要刪除',
-                style: TextStyle(color: Colors.red),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showFinalConfirmDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('最後確認'),
-          content: const Text('此操作無法復原，確定要永久刪除帳號嗎？'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () async {
-                Navigator.pop(dialogContext);
-                final userId = context.read<UserProvider>().userId;
-                if (userId == null) return;
-
-                final res = await ApiClient.deleteAccount(userId);
-
-                try {
-                  await FirebaseAuth.instance.currentUser?.delete();
-                } catch (_) {}
-
-                if (!context.mounted) return;
-
-                if (res['error'] != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(res['error'])),
-                  );
-                  return;
-                }
-
-                context.read<UserProvider>().logout();
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                  (route) => false,
-                );
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('帳號已刪除，所有資料已清除')),
-                );
-              },
-              child: const Text(
-                '確認刪除',
-                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        );
-      },
     );
   }
 }
@@ -985,17 +1044,20 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
                           color: primaryGreen,
                         ),
                       ),
-                      const Spacer(),
-                      Text(
-                        fb['replied_at'] ?? '',
-                        style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                      ),
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   Text(
                     fb['reply'],
-                    style: const TextStyle(fontSize: 14, color: textColor),
+                    style: const TextStyle(fontSize: 14, color: textColor, height: 1.5),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      fb['replied_at'] ?? '',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                    ),
                   ),
                 ],
               ),

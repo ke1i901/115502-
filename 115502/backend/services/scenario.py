@@ -80,6 +80,9 @@ def analyze_scene():
                     kana=vocab_info.get('kana', ''),
                     meaning=vocab_info.get('meaning', ''),
                     sentence_basic=sentence.get('japanese', ''),
+                    sentence_inter=sentence.get('japanese_inter', ''),
+                    sentence_upper_inter=sentence.get('japanese_upper', ''),
+                    sentence_advanced=sentence.get('japanese_adv', '')
                 )
                 db.session.add(v)
                 db.session.flush() # 取得 v.id
@@ -202,6 +205,7 @@ def get_unlocked_scenes(user_id):
         vocab_count = UserPhotoVocab.query.filter_by(photo_id=p.id).count()
         
         results.append({
+            "photo_id": p.id,
             "scene_id": p.scene_id if p.scene_id else 0, 
             "scene_name": p.custom_title or (p.scene.name if p.scene else "單字探險"),
             "icon_name": p.scene.icon_name if p.scene else "image",
@@ -244,3 +248,25 @@ def get_vocabs_by_photo():
             })
             
     return jsonify({"vocabs": results}), 200
+
+@scenario_bp.route('/rename_photo', methods=['POST'])
+def rename_photo():
+    """
+    更新使用者自訂照片名稱
+    """
+    from utils.db import db
+    data = request.json
+    photo_id = data.get('photo_id')
+    new_title = data.get('custom_title')
+    
+    if not photo_id or not new_title:
+        return jsonify({'error': '缺少 photo_id 或 custom_title'}), 400
+        
+    photo = UserPhoto.query.get(photo_id)
+    if not photo:
+        return jsonify({'error': '找不到照片'}), 404
+        
+    photo.custom_title = new_title
+    db.session.commit()
+    
+    return jsonify({'message': '修改成功', 'custom_title': new_title}), 200

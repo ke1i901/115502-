@@ -1,5 +1,6 @@
 import re
 from datetime import date, datetime
+from unittest import result
 
 from flask import Blueprint, request, jsonify
 
@@ -9,7 +10,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from utils.db import db
 from utils.group_helper import add_group_progress_and_check_reward
 from models import (
-    User, UserAbility, UserAchievement, UserVocab, UserFolder, UserVocab,
+    User, UserAchievement, UserVocab, UserFolder, UserVocab,
     Achievement, FriendRequest, Friendship, GroupMember, GroupInvite, StudyGroup,
     Feedback, PointTransaction, Vocab
 )
@@ -169,7 +170,7 @@ def delete_account():
 
     try:
         # 刪除相關資料
-        UserAbility.query.filter_by(user_id=user_id).delete()
+        # UserAbility.query.filter_by(user_id=user_id).delete()
         UserAchievement.query.filter_by(user_id=user_id).delete()
         UserVocab.query.filter_by(user_id=user_id).delete()
         UserFolder.query.filter_by(user_id=user_id).delete()
@@ -199,6 +200,26 @@ def delete_account():
         db.session.rollback()
         return jsonify({"error": f"刪除失敗：{str(e)}"}), 500
     
+# 更新個人資料（包含 AI 小抄）
+@user_bp.route('/update_profile', methods=['POST'])
+def update_profile():
+    # 假設你有傳 user_id 過來 (實戰中可能是從 Token 抓)
+    user_id = request.form.get('user_id') 
+    new_cheat_sheet = request.form.get('cheat_sheet', '')
+
+    if not user_id:
+        return jsonify({'error': '缺少 user_id'}), 400
+
+    # 從資料庫找出這個人
+    user = User.query.get(user_id)
+    if user:
+        # 把 Flutter 傳來的小抄存進資料庫
+        user.ai_cheat_sheet = new_cheat_sheet
+        db.session.commit()
+        return jsonify({'message': 'AI 小抄更新成功！'})
+    else:
+        return jsonify({'error': '找不到該使用者'}), 404    
+
 # 抓取雷達圖與徽章
 @user_bp.route('/profile_data/<int:user_id>', methods=['GET'])
 def get_profile_data(user_id):
@@ -385,11 +406,11 @@ def search_friend():
     if not user:
         return jsonify({"error": "找不到此 ID 的用戶 🥲"}), 404
 
-    # 把找到的用戶資料回傳給手機 (因為資料庫目前沒有暱稱，我們先用 email 當作名字)
+    # 把找到的用戶資料回傳給手機
     return jsonify({
         "user_id": user.id,
         "email": user.email,
-        "nickname": user.username or user.email.split('@')[0],
+        "username": user.username,
         "friend_id": user.friend_id,
         "avatar": user.avatar
     }), 200
@@ -465,16 +486,89 @@ def get_friends_list(user_id):
         # 找出好友的詳細資料
         friend_user = User.query.get(f.friend_id)
         if friend_user:
-            nickname = friend_user.username or friend_user.email.split('@')[0]
+            original_name = friend_user.username or friend_user.email.split('@')[0]
             result.append({
                 "user_id": friend_user.id,
-                "nickname": nickname,
                 "friend_id": friend_user.friend_id,
-                "avatar": friend_user.avatar
+                "avatar": friend_user.avatar,
+                "username": original_name,
+                "nickname": f.nickname,
+                "japanese_level": friend_user.japanese_level
             })
             
     return jsonify({"friends": result}), 200
 
+# 刪除好友 API
+@user_bp.route('/friend/delete', methods=['POST'])
+def delete_friend():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    target_friend_code = data.get('friend_id') # 👈 這是前端傳來的字串 ID (如 QZHPAREI)
+
+    if not user_id or not target_friend_code:
+        return jsonify({"error": "缺少必要參數"}), 400
+
+    try:
+        # 先用字串 ID 找出對方真正的資料庫「整數 ID」
+        target_user = User.query.filter_by(friend_id=target_friend_code).first()
+        if not target_user:
+            return jsonify({"error": "找不到該用戶"}), 404
+
+        target_user_id = target_user.id
+
+        # 用真正的整數 ID 去查 Friendship 表並刪除雙向關係
+        rel1 = Friendship.query.filter_by(user_id=user_id, friend_id=target_user_id).first()
+        rel2 = Friendship.query.filter_by(user_id=target_user_id, friend_id=user_id).first()
+
+        if not rel1 and not rel2:
+            return jsonify({"error": "找不到好友紀錄"}), 404
+
+        if rel1:
+            db.session.delete(rel1)
+        if rel2:
+            db.session.delete(rel2)
+
+        db.session.commit()
+        return jsonify({"message": "好友已成功刪除"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"刪除失敗: {str(e)}"}), 500
+
+
+# 修改好友暱稱 (備註) API
+@user_bp.route('/friend/update_nickname', methods=['POST'])
+def update_friend_nickname():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    target_friend_code = data.get('friend_id') # 👈 這是前端傳來的字串 ID
+    new_nickname = data.get('nickname')
+
+    if not user_id or not target_friend_code or not new_nickname:
+        return jsonify({"error": "缺少必要參數"}), 400
+
+    try:
+        # 先找出對方的整數 ID
+        target_user = User.query.filter_by(friend_id=target_friend_code).first()
+        if not target_user:
+            return jsonify({"error": "找不到該用戶"}), 404
+
+        # 用整數 ID 找出「你加他」的那條好友關係
+        friendship = Friendship.query.filter_by(user_id=user_id, friend_id=target_user.id).first()
+        
+        if not friendship:
+            return jsonify({"error": "找不到好友關係"}), 404
+            
+        # 將新的暱稱存入資料庫
+        friendship.nickname = new_nickname 
+        
+        db.session.commit()
+        return jsonify({"message": "暱稱已更新"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"更新失敗: {str(e)}"}), 500
+    
 # ==========================================
 # 意見回饋
 # ==========================================
@@ -506,16 +600,20 @@ def submit_feedback():
 # 查詢使用者的歷史回饋
 @user_bp.route('/feedback/<int:user_id>', methods=['GET'])
 def get_feedbacks(user_id):
+    from datetime import timedelta
     feedbacks = Feedback.query.filter_by(user_id=user_id).order_by(Feedback.created_at.desc()).all()
     result = []
     for fb in feedbacks:
+        # UTC 轉台灣時間 (+8)
+        created_tw = (fb.created_at + timedelta(hours=8)) if fb.created_at else None
+        replied_tw = (fb.replied_at + timedelta(hours=8)) if fb.replied_at else None
         result.append({
             "id": fb.id,
             "feedback_type": fb.feedback_type,
             "content": fb.content,
             "reply": fb.reply,
-            "replied_at": fb.replied_at.strftime('%Y-%m-%d %H:%M') if fb.replied_at else None,
-            "created_at": fb.created_at.strftime('%Y-%m-%d %H:%M'),
+            "replied_at": replied_tw.strftime('%Y-%m-%d %H:%M') if replied_tw else None,
+            "created_at": created_tw.strftime('%Y-%m-%d %H:%M') if created_tw else None,
         })
     return jsonify({"feedbacks": result}), 200
 

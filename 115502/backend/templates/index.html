@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>JLens Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --green-dark: #4a7a54;
+            --green-mid: #6a9e72;
+            --green-light: #dce7de;
+            --green-accent: #5c8364;
+            --bg: #f4f7f5;
+        }
+        * { box-sizing: border-box; }
+        body { background: var(--bg); font-family: "微軟正黑體", sans-serif; color: #444; margin: 0; }
+
+        /* ===== Sidebar ===== */
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar { width: 220px; background: white; box-shadow: 2px 0 10px rgba(0,0,0,0.04); padding: 24px 0; flex-shrink: 0; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+        .sidebar-logo { display: flex; align-items: center; gap: 10px; padding: 0 20px 20px; border-bottom: 1px solid #eee; margin-bottom: 12px; }
+        .sidebar-logo .icon-box { width: 36px; height: 36px; background: var(--green-light); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--green-accent); font-weight: bold; }
+        .sidebar-logo .title { color: var(--green-accent); font-weight: bold; font-size: 1rem; line-height: 1.2; }
+        .sidebar-logo .subtitle { color: #aaa; font-size: 0.7rem; margin-top: 2px; }
+        .sidebar-menu { list-style: none; padding: 0; margin: 0; }
+        .sidebar-menu a { display: flex; align-items: center; gap: 10px; padding: 12px 20px; color: #666; text-decoration: none; font-size: 0.95rem; transition: 0.2s; }
+        .sidebar-menu a:hover { background: var(--bg); color: var(--green-accent); }
+        .sidebar-menu a.active { background: var(--green-light); color: var(--green-accent); font-weight: bold; border-right: 4px solid var(--green-accent); }
+
+        /* ===== Main ===== */
+        .main-content { flex: 1; overflow-x: hidden; }
+
+        /* ===== Stats Banner ===== */
+        .stats-banner {
+            background: linear-gradient(135deg, var(--green-dark) 0%, var(--green-mid) 100%);
+            padding: 28px 48px;
+            display: flex;
+            gap: 0;
+        }
+        .stat-item {
+            flex: 1;
+            text-align: center;
+            padding: 0 16px;
+            border-right: 1px solid rgba(255,255,255,0.15);
+        }
+        .stat-item:last-child { border-right: none; }
+        .stat-item .num {
+            font-size: 2.4rem;
+            font-weight: 800;
+            color: white;
+            line-height: 1;
+        }
+        .stat-item .lbl {
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.65);
+            margin-top: 6px;
+            letter-spacing: 0.5px;
+        }
+        .stat-item .dot {
+            display: inline-block;
+            width: 7px; height: 7px;
+            background: #6ee07a;
+            border-radius: 50%;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+
+        /* ===== Body area ===== */
+        .body-area { padding: 32px 48px; }
+
+        /* ===== Cards ===== */
+        .panel {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+        .panel-header {
+            padding: 14px 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: white;
+            background: var(--green-dark);
+            letter-spacing: 0.5px;
+        }
+        .panel-body { padding: 16px 20px; }
+
+        /* ===== Timeline ===== */
+        .timeline { position: relative; padding: 4px 0; }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 17px;
+            top: 0; bottom: 0;
+            width: 2px;
+            background: #eee;
+        }
+        .tl-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 10px 0;
+            position: relative;
+        }
+        .tl-dot {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 1;
+        }
+        .tl-dot.login  { background: #d4edda; }
+        .tl-info { flex: 1; min-width: 0; padding-top: 2px; }
+        .tl-name { font-weight: 600; font-size: 0.9rem; color: #333; }
+        .tl-desc { font-size: 0.78rem; color: #aaa; margin-top: 2px; }
+
+        /* ===== Activity list (feedback panel) ===== */
+        .activity-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid #f2f2f2;
+        }
+        .activity-item:last-child { border-bottom: none; }
+        .activity-info { flex: 1; min-width: 0; }
+        .activity-name { font-weight: 600; font-size: 0.9rem; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .activity-time { font-size: 0.75rem; color: #aaa; margin-top: 1px; }
+
+    </style>
+</head>
+<body>
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="icon-box">JL</div>
+            <div><div class="title">JLens</div><div class="subtitle">snap to manage</div></div>
+        </div>
+        <ul class="sidebar-menu">
+            <li><a href="/dashboard" class="active">🏠 首頁</a></li>
+            <li><a href="/user/list">👤 使用者資料</a></li>
+            <li><a href="/customer/list">💰 點數管理</a></li>
+            <li><a href="/purchase/list">🛒 購買紀錄</a></li>
+            <li><a href="/photo/list">🖼️ 照片管控</a></li>
+            <li><a href="/vocab/list">📖 教材單字管理</a></li>
+            <li><a href="/quiz/list">📝 測驗題目管理</a></li>
+            <li><a href="/feedback/list">💬 意見回饋</a></li>
+            <hr style="margin: 15px 20px; border-color: rgba(0,0,0,0.1);">
+            <li><a href="{{ url_for('admin_logout') }}" style="color:#d9534f;">🚪 登出系統</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <div class="stats-banner">
+            <div class="stat-item">
+                <div class="num">{{ user_count }}</div>
+                <div class="lbl">總使用者</div>
+            </div>
+            <div class="stat-item">
+                <div class="num">{{ today_active }}</div>
+                <div class="lbl"><span class="dot"></span>今日活躍</div>
+            </div>
+            <div class="stat-item">
+                <div class="num">{{ vocab_count }}</div>
+                <div class="lbl">教材單字</div>
+            </div>
+            <div class="stat-item">
+                <div class="num">{{ new_users_today }}</div>
+                <div class="lbl">今日新使用者</div>
+            </div>
+        </div>
+
+        <div class="body-area">
+            <div class="row g-4">
+                <div class="col-md-7">
+                    <div class="panel">
+                        <div class="panel-header">🕐 最近動態</div>
+                        <div class="panel-body">
+                            {% if recent_users %}
+                            <div class="timeline">
+                                {% for u in recent_users %}
+                                <div class="tl-item">
+                                    {% if u.avatar %}
+                                    <img src="{{ u.avatar }}" class="tl-dot" style="object-fit:cover;">
+                                    {% else %}
+                                    <div class="tl-dot login" style="font-size:0.9rem;font-weight:bold;color:#4a7a54;">{{ (u.username or u.email)[0]|upper }}</div>
+                                    {% endif %}
+                                    <div class="tl-info">
+                                        <div class="tl-name">{{ u.username or '未設定暱稱' }} 登入</div>
+                                        <div class="tl-desc">{{ u.email }} · {{ u.last_seen_at }}</div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                                <div style="text-align:center;color:#bbb;padding:20px 0;font-size:0.9rem;">尚無登入紀錄</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-5">
+                    <div class="panel">
+                        <div class="panel-header">
+                            💬 待回覆回饋
+                            {% if feedback_pending > 0 %}
+                            <span style="margin-left:8px;background:rgba(255,255,255,0.2);font-size:0.75rem;padding:2px 8px;border-radius:50px;">{{ feedback_pending }} 筆</span>
+                            {% endif %}
+                        </div>
+                        <div class="panel-body">
+                            {% if pending_feedbacks %}
+                                {% for f in pending_feedbacks %}
+                                <div class="activity-item">
+                                    <div class="activity-info">
+                                        <div class="activity-name">{{ f.username or f.email or '匿名' }}</div>
+                                        <div class="activity-time" style="color:#888;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;">{{ f.content }}</div>
+                                        <div class="activity-time">{{ f.created_at }}</div>
+                                    </div>
+                                    <a href="/feedback/list" style="flex-shrink:0;font-size:0.75rem;color:var(--green-accent);text-decoration:none;font-weight:600;">回覆 →</a>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div style="text-align:center;color:#bbb;padding:20px 0;font-size:0.9rem;">沒有待回覆的回饋 🎉</div>
+                            {% endif %}
+                        </div>
+                        {% if feedback_pending > 0 %}
+                        <div style="border-top:1px solid #f2f2f2;padding:10px 20px;text-align:center;">
+                            <a href="/feedback/list" style="font-size:0.82rem;color:var(--green-accent);text-decoration:none;font-weight:600;">查看全部 →</a>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <p class="mt-4 text-muted" style="font-size:0.78rem;">© 2026 JLens Project Team. All rights reserved.</p>
+        </div>
+    </main>
+</div>
+</body>
+</html>

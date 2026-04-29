@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 import 'package:jpn_learning_app/providers/user_provider.dart';
 import 'package:jpn_learning_app/utils/api_client.dart';
 
+import 'package:jpn_learning_app/widgets/study_group/group_invite_card.dart';
+import 'package:jpn_learning_app/utils/helpers.dart';
+
 class GroupInvitesScreen extends StatefulWidget {
   const GroupInvitesScreen({Key? key}) : super(key: key);
 
@@ -12,10 +15,7 @@ class GroupInvitesScreen extends StatefulWidget {
 }
 
 class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
-  static const Color textDark = Color(0xFF333333);
   static const Color subText = Color(0xFF6E6E6E);
-  static const Color lightGreen = Color(0xFFEAF3E3);
-  static const Color beige = Color(0xFFF6EBC7);
 
   bool _isLoading = true;
   List<dynamic> _invites = [];
@@ -49,7 +49,45 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
     final userId = context.read<UserProvider>().userId;
     if (userId == null) return;
 
-    // 顯示載入中的 Snackbar (選擇性)
+    // 如果他按下「接受」，進行雙重防呆 (免費/付費都要警告鎖定機制)
+    if (action == 'accept') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('檢查額度中...')));
+      final bool isFree = await ApiClient.checkFreeQuota(userId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      }
+
+      // 根據免費或付費，給予不同的警告內容
+      final String dialogTitle = isFree ? '🎯 學習挑戰確認' : '⚠️ 押金與對賭提醒';
+      final String dialogContent = isFree
+          ? '本週首次加入免費！\n\n⚠️ 注意：這是一場為期至本週日結算的挑戰，一旦加入，直到結算前都絕對無法中途退出喔！準備好要一起學習了嗎？'
+          : '您本週的免費小組額度已用完。\n\n本次加入將扣除 20 J-Pts 作為對賭押金（達標後退還）。\n\n⚠️ 注意：一旦加入，直到本週日結算前絕對無法中途退出！確定要繼續嗎？';
+      final String confirmButtonText = isFree ? '確定加入' : '確定扣除並加入';
+
+      final bool confirm = await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(dialogTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
+          content: Text(dialogContent, style: const TextStyle(height: 1.5)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('先不要', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(confirmButtonText, style: const TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ) ?? false;
+
+      // 如果玩家按了「先不要」取消，就直接終止
+      if (!confirm) return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('處理中...'), duration: Duration(seconds: 1)),
     );
@@ -57,19 +95,22 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
     final result = await ApiClient.respondGroupInvite(inviteId, action, userId);
 
     if (mounted) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       if (result.containsKey('error')) {
-        // 如果滿人或發生錯誤
+        // 如果滿人或錢不夠被後端擋下來，會顯示在這裡！
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['error'])));
       } else {
-        // 成功！
+        // 如果有扣款，更新前端錢包
+        if (result.containsKey('new_j_pts')) {
+           context.read<UserProvider>().setJPts(result['new_j_pts']);
+        }
+
         final actionText = action == 'accept' ? '已接受' : '已拒絕';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$actionText「$groupName」的邀請')));
 
         if (action == 'accept') {
-          // 如果是接受，代表已成功加入，直接回到上一頁 (上一頁的 .then 會觸發重新抓取公會資料)
           Navigator.pop(context);
         } else {
-          // 如果是拒絕，留在本頁，重新抓取名單 (剛拒絕的邀請會消失)
           _loadInvites();
         }
       }
@@ -89,10 +130,7 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
         centerTitle: true,
         title: const Text(
           '小組邀請',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
         ),
       ),
       body: _isLoading
@@ -101,10 +139,7 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
               ? const Center(
                   child: Text(
                     '目前沒有新的小組邀請',
-                    style: TextStyle(
-                      fontSize: 17,
-                      color: subText,
-                    ),
+                    style: TextStyle(fontSize: 17, color: subText),
                   ),
                 )
               : ListView.separated(
@@ -117,78 +152,15 @@ class _GroupInvitesScreenState extends State<GroupInvitesScreen> {
                     final groupName = item['group_name'] ?? '未知小組';
                     final inviterName = item['inviter_name'] ?? '未知';
 
-                    return Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: beige),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            groupName,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: textDark,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '邀請人：$inviterName',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: subText,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primary.withOpacity(0.9),
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                  ),
-                                  onPressed: () => _respondToInvite(inviteId, 'accept', groupName),
-                                  child: const Text(
-                                    '接受',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: lightGreen,
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                  ),
-                                  onPressed: () => _respondToInvite(inviteId, 'reject', groupName),
-                                  child: const Text(
-                                    '拒絕',
-                                    style: TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                    return GroupInviteCard(
+                      groupName: groupName,
+                      inviterName: inviterName,
+                      inviterNickname: item['inviter_nickname']?.toString(),
+                      inviterFriendId: item['inviter_friend_id']?.toString() ?? '',
+                      inviterAvatar: item['inviter_avatar']?.toString(),
+                      inviterLevelText: AppHelpers.getDisplayLevel(item['inviter_level']?.toString()),
+                      onAccept: () => _respondToInvite(inviteId, 'accept', groupName),
+                      onReject: () => _respondToInvite(inviteId, 'reject', groupName),
                     );
                   },
                 ),

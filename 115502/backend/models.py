@@ -1,5 +1,6 @@
 from utils.db import db
 from datetime import datetime, date
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # ==========================================
 # 👤 1. 核心使用者系統
@@ -15,10 +16,14 @@ class User(db.Model):
     japanese_level = db.Column(db.String(50), nullable=True)  # 儲存日語程度
     avatar = db.Column(db.Text, nullable=True)  # 用來存圖片的 Base64 字串
     
+    ai_cheat_sheet = db.Column(db.Text, nullable=True)
+
     j_pts = db.Column(db.Integer, default=0)         
-    streak_days = db.Column(db.Integer, default=1)   
+    streak_days = db.Column(db.Integer, default=1)
     last_login_date = db.Column(db.Date, nullable=True)
+    last_seen_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_free_group_week = db.Column(db.String(10), nullable=True)  # 紀錄他上一次「免費」參加小組是哪一週 (格式如 '2026-15')
 
     # 今日拍照次數與最後拍照日期
     daily_scans = db.Column(db.Integer, default=0)
@@ -35,17 +40,17 @@ class User(db.Model):
     # 使用者單字紀錄（解鎖 / 收藏）
     user_vocabs = db.relationship('UserVocab', backref='user', lazy=True)
     achievements = db.relationship('UserAchievement', backref='user', lazy=True)
-    abilities = db.relationship('UserAbility', backref='user', uselist=False, lazy=True) # 一對一關聯
+#   abilities = db.relationship('UserAbility', backref='user', uselist=False, lazy=True) # 一對一關聯
 
-# 使用者能力值表 (UserAbility) - 雷達圖專用
-class UserAbility(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    listening = db.Column(db.Float, default=0.2)  # 預設 0.2 (滿分 1.0)
-    reading = db.Column(db.Float, default=0.2)
-    writing = db.Column(db.Float, default=0.2)
-    culture = db.Column(db.Float, default=0.2)
-    speaking = db.Column(db.Float, default=0.2)
+# # 使用者能力值表 (UserAbility) - 雷達圖專用
+# class UserAbility(db.Model):
+#     id = db.Column(db.Integer, primary_key=True)
+#     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+#     listening = db.Column(db.Float, default=0.2)  # 預設 0.2 (滿分 1.0)
+#     reading = db.Column(db.Float, default=0.2)
+#     writing = db.Column(db.Float, default=0.2)
+#     culture = db.Column(db.Float, default=0.2)
+#     speaking = db.Column(db.Float, default=0.2)
 
 
 # ==========================================
@@ -191,6 +196,7 @@ class Friendship(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     friend_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    nickname = db.Column(db.String(50), nullable=True)     # 幫朋友改名！
 
 
 # ==========================================
@@ -205,12 +211,12 @@ class StudyGroup(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     goal_type = db.Column(db.String(50), nullable=False, default='scans') 
     goal_target = db.Column(db.Integer, nullable=False, default=30)       
-    
+    expire_at = db.Column(db.DateTime, nullable=False)  # 紀錄這個小組何時到期 (週日 23:59)
+
     # === 獎勵機制專用 ===
     current_progress = db.Column(db.Integer, default=0) # 小組當前總進度
     reward_points = db.Column(db.Integer, default=50)   # 達標後，有貢獻的成員每人可獲得的點數 (j_pts)
-    is_reward_claimed = db.Column(db.Boolean, default=False) # 本次目標是否已經發放過獎勵 (防重複發放)
-
+    
     # 關聯：一個小組可以有多個成員
     members = db.relationship('GroupMember', backref='group', lazy=True, cascade="all, delete-orphan")
     invites = db.relationship('GroupInvite', backref='group', lazy=True, cascade="all, delete-orphan")
@@ -227,6 +233,9 @@ class GroupMember(db.Model):
     group_points = db.Column(db.Integer, default=0) # 加入小組後的獲得點數
     group_logins = db.Column(db.Integer, default=0) # 加入小組後的登入天數
 
+    has_claimed = db.Column(db.Boolean, default=False)  # 是否已領取獎勵
+    paid_deposit = db.Column(db.Boolean, default=False) # 加入時是否有付 20 點押金
+   
 # 小組邀請表 (GroupInvite)
 class GroupInvite(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -251,3 +260,19 @@ class Feedback(db.Model):
     reply = db.Column(db.Text, nullable=True)
     replied_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+# ==========================================
+# 🛡️ 系統管理者 (Admin) 資料表
+# ==========================================
+class Admin(db.Model):
+    __tablename__ = 'admin'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+    

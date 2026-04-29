@@ -26,25 +26,35 @@ print("開始執行資料庫升級...")
 add_column("group_member", "group_scans INTEGER DEFAULT 0")
 add_column("group_member", "group_points INTEGER DEFAULT 0")
 add_column("group_member", "group_logins INTEGER DEFAULT 0")
+
+# 各自領獎與押金機制欄位
+add_column("group_member", "has_claimed BOOLEAN DEFAULT 0")
+add_column("group_member", "paid_deposit BOOLEAN DEFAULT 0")
+
 print("✅ group_member 欄位確認完畢")
 
 # ==========================================
 # 2. 升級 user
 # ==========================================
 add_column("user", "username VARCHAR(30)")
+# 🌟 新增：押金對賭機制，紀錄上一次免費參加是哪一週
+add_column("user", "last_free_group_week VARCHAR(10)")
+
 try:
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_username ON user(username);")
-    print("✅ user.username 及其索引確認完畢")
+    print("✅ user 及其索引、對賭額度欄位確認完畢")
 except sqlite3.OperationalError as e:
     print(f"⚠️ username 索引建立警告：{e}")
 
 # ==========================================
-# 3. 升級 study_group (學習小組獎勵機制)
+# 3. 升級 study_group (學習小組獎勵機制與到期日)
 # ==========================================
 add_column("study_group", "current_progress INTEGER DEFAULT 0")
 add_column("study_group", "reward_points INTEGER DEFAULT 50")
 add_column("study_group", "is_reward_claimed BOOLEAN DEFAULT 0")
-print("✅ study_group 獎勵機制欄位確認完畢")
+# 🌟 新增：自動結算系統，紀錄小組到期時間
+add_column("study_group", "expire_at DATETIME")
+print("✅ study_group 獎勵機制與到期日欄位確認完畢")
 
 # ==========================================
 # 4. 升級 Scene (確保單字目錄的 icon 欄位存在)
@@ -161,6 +171,7 @@ except sqlite3.OperationalError as e:
 # ==========================================
 add_column("user", "total_active_days INTEGER DEFAULT 0")
 add_column("user", "total_scans INTEGER DEFAULT 0")
+add_column("user", "last_seen_at DATETIME")
 print("✅ user 表徽章計數器擴充成功！")
 
 # ==========================================
@@ -169,8 +180,41 @@ print("✅ user 表徽章計數器擴充成功！")
 add_column("user", "notified_levels TEXT DEFAULT '{}'")
 print("✅ user 表徽章彈窗記憶擴充成功！")
 
+# ==========================================
+# 🤝 10. 升級 friendship (好友系統：新增暱稱/備註)
+# ==========================================
+try:
+    # 先確保 friendship 表存在 (萬一它還沒被建出來)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS friendship (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        friend_id INTEGER NOT NULL,
+        status VARCHAR(20) DEFAULT 'accepted',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES user(id),
+        FOREIGN KEY(friend_id) REFERENCES user(id)
+    );
+    """)
+    
+    # 幫 friendship 加上可以自訂的 nickname 欄位
+    add_column("friendship", "nickname VARCHAR(50)")
+    
+    print("✅ friendship 好友關係表 (含暱稱備註) 確認完畢！")
+except Exception as e:
+    print(f"⚠️ friendship 建立或升級警告：{e}")
 
-# 儲存並關閉
+# ==========================================
+# 🗑️ 11. 清除舊版能力值系統 (UserAbility)
+# ==========================================
+try:
+    # 執行 DROP TABLE 語法，如果表格存在就直接刪除
+    cursor.execute("DROP TABLE IF EXISTS user_ability;")
+    print("✅ user_ability 資料表已成功移除！")
+except sqlite3.OperationalError as e:
+    print(f"⚠️ user_ability 移除警告：{e}")
+
+# 儲存並關閉 (這兩行原本就有，加在它們上面就好)
 conn.commit()
 conn.close()
 

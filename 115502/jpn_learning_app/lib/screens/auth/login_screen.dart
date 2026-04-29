@@ -10,6 +10,7 @@ import 'package:jpn_learning_app/utils/constants.dart';
 import 'package:jpn_learning_app/utils/api_client.dart';
 import 'package:jpn_learning_app/providers/user_provider.dart';
 import 'package:jpn_learning_app/services/auth_service.dart';
+import 'package:jpn_learning_app/services/notification_service.dart';
 
 // 4. 我們自己寫的畫面 (跳轉用)
 import 'package:jpn_learning_app/screens/auth/level_select_screen.dart';
@@ -99,6 +100,15 @@ class _LoginScreenState extends State<LoginScreen> {
           context.read<UserProvider>().setUsername(result['username']);
         }
 
+        try {
+          await NotificationService.setLoginStatus(true);
+        } catch (e) {
+          debugPrint('推播狀態設定失敗 (網頁版正常現象): $e');
+        }
+
+        if (!mounted) return;
+
+        // 有程度進首頁，沒程度去選程度
         if (result['japanese_level'] != null) {
           context.read<UserProvider>().setJapaneseLevel(
             result['japanese_level'],
@@ -110,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const HomeScreen()),
+            MaterialPageRoute(builder: (_) => const LevelSelectScreen()), // 👈 原本這裡寫成 HomeScreen，幫你改對了！
           );
         }
       } else {
